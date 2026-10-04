@@ -1,0 +1,9 @@
+{
+  "name":"garbage-collector-connected",
+  "version":"1.0.0",
+  "description":"Garbage Collector connected Windows desktop app for Customer and Manager over local network",
+  "main":"main.js",
+  "scripts":{"start":"electron .","dist:win":"electron-builder --win nsis portable"},
+  "devDependencies":{"electron":"^38.2.0","electron-builder":"^26.0.12"},
+  "build":{"appId":"com.garbagecollector.connected","productName":"Garbage Collector","files":["main.js","server.js","index.html","preload.js","data/**/*"],"win":{"target":["nsis","portable"],"artifactName":"GarbageCollector-${version}-${arch}.${ext}"},"nsis":{"oneClick":false,"allowToChangeInstallationDirectory":true}}
+}

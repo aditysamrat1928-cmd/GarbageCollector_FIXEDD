@@ -1,0 +1,17 @@
+const http=require('http'),fs=require('fs'),path=require('path'),crypto=require('crypto');
+function startServer(base,port){fs.mkdirSync(path.join(base,'photos'),{recursive:true}); const db=path.join(base,'db.json'); if(!fs.existsSync(db))fs.writeFileSync(db,JSON.stringify({users:[],requests:[]},null,2));
+const read=()=>JSON.parse(fs.readFileSync(db,'utf8')); const write=d=>fs.writeFileSync(db,JSON.stringify(d,null,2));
+const hash=(p,s=crypto.randomBytes(16).toString('hex'))=>({salt:s,hash:crypto.pbkdf2Sync(p,s,120000,32,'sha256').toString('hex')});
+const verify=(p,u)=>crypto.timingSafeEqual(Buffer.from(crypto.pbkdf2Sync(p,u.salt,120000,32,'sha256').toString('hex')),Buffer.from(u.hash));
+const seed=read(); if(!seed.users.some(u=>u.role==='manager')){const h=hash('Manager@123');seed.users.push({id:crypto.randomUUID(),name:'Manager',email:'manager@garbagecollector.local',role:'manager',...h});write(seed)}
+function send(res,status,obj){res.writeHead(status,{'Content-Type':'application/json','Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'Content-Type'});res.end(JSON.stringify(obj))}
+function body(req){return new Promise((resolve,reject)=>{let b='';req.on('data',c=>b+=c);req.on('end',()=>{try{resolve(b?JSON.parse(b):{})}catch(e){reject(e)}})})}
+const srv=http.createServer(async(req,res)=>{if(req.method==='OPTIONS'){res.writeHead(204,{'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'Content-Type'});return res.end()}
+try{const u=new URL(req.url,`http://${req.headers.host}`),d=read();
+if(req.method==='GET'&&u.pathname==='/api/requests')return send(res,200,{requests:d.requests});
+if(req.method==='POST'&&u.pathname==='/api/signup'){const b=await body(req);if(!b.email||!b.password||!b.name)return send(res,400,{error:'Name, email and password required'});if(d.users.some(x=>x.email.toLowerCase()===b.email.toLowerCase()))return send(res,409,{error:'Account already exists'});const h=hash(b.password),user={id:crypto.randomUUID(),name:b.name,email:b.email,role:'customer',...h};d.users.push(user);write(d);return send(res,200,{user:{id:user.id,name:user.name,email:user.email,role:user.role}})}
+if(req.method==='POST'&&u.pathname==='/api/login'){const b=await body(req),user=d.users.find(x=>x.email.toLowerCase()===String(b.email||'').toLowerCase()&&x.role===b.role);if(!user||!verify(b.password,user))return send(res,401,{error:'Invalid login'});return send(res,200,{user:{id:user.id,name:user.name,email:user.email,role:user.role}})}
+if(req.method==='POST'&&u.pathname==='/api/request'){const b=await body(req);const r={id:crypto.randomUUID(),customerId:b.customerId,customerName:b.customerName,customerEmail:b.customerEmail,problem:b.problem,location:b.location,description:b.description,photos:b.photos||[],status:'New',createdAt:new Date().toISOString(),visitAt:null};d.requests.unshift(r);write(d);return send(res,200,{request:r})}
+if(req.method==='POST'&&u.pathname.startsWith('/api/request/')){const id=u.pathname.split('/').pop(),b=await body(req),r=d.requests.find(x=>x.id===id);if(!r)return send(res,404,{error:'Request not found'});if(b.status)r.status=b.status;if(b.visitAt!==undefined)r.visitAt=b.visitAt;write(d);return send(res,200,{request:r})}
+return send(res,404,{error:'Not found'})}catch(e){send(res,500,{error:e.message})}});return new Promise(resolve=>srv.listen(port,'0.0.0.0',()=>resolve(srv)))}
+module.exports={startServer};
